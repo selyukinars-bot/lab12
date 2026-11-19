@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Электронная библиотека</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container" id="loginForm">
+        <h1>Электронная библиотека</h1>
+        <h2>Вход в аккаунт</h2>
+
+        <input type="text" id="username" placeholder="Введите логин">
+        <input type="password" id="password" placeholder="Введите пароль">
+
+        <button onclick="login()">Войти</button>
+
+        <p id="message"></p>
+    </div>
+
+    <div class="container hidden" id="profile">
+        <h1>Мой профиль</h1>
+        <h2>Добро пожаловать!</h2>
+
+        <p>Логин: <span id="profileName"></span></p>
+        <p>Статус: Читатель</p>
+        <p>Библиотека: Электронная библиотека</p>
+
+        <button onclick="logout()">Выйти</button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+----------------------------------
+body {
+    font-family: Arial, sans-serif;
+    background: #e8eef5;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+}
+
+.container {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    width: 320px;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+}
+
+input {
+    width: 90%;
+    padding: 12px;
+    margin: 10px 0;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+
+button {
+    width: 100%;
+    padding: 12px;
+    background: #2878d0;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #185ca5;
+}
+
+.hidden {
+    display: none;
+}
+
+#message {
+    color: red;
+}
+------------------------------------------
+function login() {
+    let username = document.getElementById("username").value;
+    let password = document.getElementById("password").value;
+
+    if (username === "student" && password === "12345") {
+
+        document.getElementById("loginForm").classList.add("hidden");
+        document.getElementById("profile").classList.remove("hidden");
+
+        document.getElementById("profileName").textContent = username;
+
+    } else {
+        document.getElementById("message").textContent =
+            "Неверный логин или пароль!";
+    }
+}
+
+function logout() {
+    document.getElementById("profile").classList.add("hidden");
+    document.getElementById("loginForm").classList.remove("hidden");
+
+    document.getElementById("username").value = "";
+    document.getElementById("password").value = "";
+    document.getElementById("message").textContent = "";
+}
