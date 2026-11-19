@@ -1,0 +1,465 @@
+Bash
+npm init -y
+npm install express express-session
+
+
+const express = require("express");
+const session = require("express-session");
+
+const app = express();
+
+app.use(express.json());
+app.use(express.static("public"));
+
+app.use(session({
+    secret: process.env.SESSION_SECRET || "library-secret-key",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: false,
+        maxAge: 30 * 60 * 1000
+    }
+}));
+
+// База пользователей (учебный вариант)
+const users = [
+    { id: 1, username: "admin", password: "12345", role: "admin" },
+    { id: 2, username: "student", password: "12345", role: "student" },
+    { id: 3, username: "teacher", password: "12345", role: "teacher" }
+];
+
+// Журнал событий
+const events = [];
+
+function addEvent(username, action, details = "") {
+    events.push({
+        id: events.length + 1,
+        username,
+        action,
+        details,
+        date: new Date().toLocaleString("ru-RU")
+    });
+}
+
+// Проверка авторизации
+function checkAuth(req, res, next) {
+    if (!req.session.user) {
+        return res.status(401).json({
+            message: "Необходимо авторизоваться"
+        });
+    }
+
+    next();
+}
+
+// Проверка роли
+function checkRole(...roles) {
+    return (req, res, next) => {
+        if (!req.session.user ||
+            !roles.includes(req.session.user.role)) {
+            return res.status(403).json({
+                message: "Недостаточно прав доступа"
+            });
+        }
+
+        next();
+    };
+}
+
+// Вход в систему
+app.post("/api/login", (req, res) => {
+    const { username, password } = req.body;
+
+    const user = users.find(
+        u => u.username === username &&
+             u.password === password
+    );
+
+    if (!user) {
+        addEvent(username || "Неизвестный пользователь", "Ошибка входа");
+
+        return res.status(401).json({
+            message: "Неверный логин или пароль"
+        });
+    }
+
+    req.session.user = {
+        id: user.id,
+        username: user.username,
+        role: user.role
+    };
+
+    addEvent(user.username, "Вход в систему");
+
+    res.json({
+        message: "Вход выполнен успешно",
+        user: req.session.user
+    });
+});
+
+// Информация о текущем пользователе
+app.get("/api/profile", checkAuth, (req, res) => {
+    res.json(req.session.user);
+});
+
+// Получение списка пользователей (только администратор)
+app.get("/api/users", checkAuth, checkRole("admin"), (req, res) => {
+    const safeUsers = users.map(({ id, username, role }) => ({
+        id,
+        username,
+        role
+    }));
+
+    res.json(safeUsers);
+});
+
+// Изменение роли пользователя (только администратор)
+app.patch("/api/users/:id/role",
+    checkAuth,
+    checkRole("admin"),
+    (req, res) => {
+
+        const user = users.find(
+            u => u.id === Number(req.params.id)
+        );
+
+        const { role } = req.body;
+        const allowedRoles = ["admin", "student", "teacher"];
+
+        if (!user) {
+            return res.status(404).json({
+                message: "Пользователь не найден"
+            });
+        }
+
+        if (!allowedRoles.includes(role)) {
+            return res.status(400).json({
+                message: "Недопустимая роль"
+            });
+        }
+
+        const oldRole = user.role;
+        user.role = role;
+
+        addEvent(
+            req.session.user.username,
+            "Изменение роли",
+            `${user.username}: ${oldRole} → ${role}`
+        );
+
+        res.json({
+            message: "Роль успешно изменена"
+        });
+    }
+);
+
+// Просмотр журнала событий (только администратор)
+app.get("/api/events", checkAuth, checkRole("admin"), (req, res) => {
+    res.json(events);
+});
+
+// Выход из системы
+app.post("/api/logout", checkAuth, (req, res) => {
+    const username = req.session.user.username;
+
+    addEvent(username, "Выход из системы");
+
+    req.session.destroy(err => {
+        if (err) {
+            return res.status(500).json({
+                message: "Ошибка выхода"
+            });
+        }
+
+        res.json({
+            message: "Выход выполнен успешно"
+        });
+    });
+});
+
+// Запуск сервера
+app.listen(3000, () => {
+    console.log("Сервер запущен: http://localhost:3000");
+});
+----------------------------------------
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управление пользователями</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container" id="loginForm">
+        <h1>Электронная библиотека</h1>
+        <h2>Вход в систему</h2>
+
+        <input id="username" placeholder="Логин">
+        <input id="password" type="password" placeholder="Пароль">
+
+        <button onclick="login()">Войти</button>
+
+        <p id="message"></p>
+
+        <div class="examples">
+            <p>Администратор: admin / 12345</p>
+            <p>Студент: student / 12345</p>
+            <p>Преподаватель: teacher / 12345</p>
+        </div>
+    </div>
+
+    <div class="container hidden" id="dashboard">
+        <h1>Панель управления</h1>
+
+        <h2 id="welcome"></h2>
+        <p id="userRole"></p>
+
+        <div id="adminPanel" class="hidden">
+            <h3>Управление пользователями</h3>
+            <div id="users"></div>
+
+            <h3>Журнал событий</h3>
+            <div id="events"></div>
+        </div>
+
+        <div id="userPanel" class="hidden">
+            <h3>Личный кабинет</h3>
+            <p>Вы успешно вошли в электронную библиотеку.</p>
+            <p>Вам доступны функции согласно вашей роли.</p>
+        </div>
+
+        <button onclick="logout()">Выйти</button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+--------------------------------
+body {
+    font-family: Arial, sans-serif;
+    background: #e8eef5;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.container {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    width: 420px;
+    max-width: 100%;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+}
+
+input, select {
+    width: 90%;
+    padding: 12px;
+    margin: 10px 0;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+
+button {
+    padding: 11px;
+    background: #2878d0;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    margin: 5px;
+}
+
+button:hover {
+    background: #185ca5;
+}
+
+.hidden {
+    display: none;
+}
+
+#message {
+    color: red;
+}
+
+.examples {
+    font-size: 13px;
+    color: gray;
+}
+
+.item {
+    background: #f1f4f8;
+    padding: 10px;
+    margin: 8px 0;
+    border-radius: 6px;
+    text-align: left;
+}
+
+#adminPanel {
+    text-align: left;
+}
+
+#events {
+    max-height: 250px;
+    overflow-y: auto;
+}
+---------------------------------------
+async function api(url, options = {}) {
+    const response = await fetch(url, {
+        ...options,
+        headers: {
+            "Content-Type": "application/json",
+            ...options.headers
+        }
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.message || "Ошибка запроса");
+    }
+
+    return data;
+}
+
+// Вход
+async function login() {
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+
+    try {
+        await api("/api/login", {
+            method: "POST",
+            body: JSON.stringify({ username, password })
+        });
+
+        await showDashboard();
+
+    } catch (error) {
+        document.getElementById("message").textContent = error.message;
+    }
+}
+
+// Панель управления
+async function showDashboard() {
+    try {
+        const user = await api("/api/profile");
+
+        document.getElementById("loginForm").classList.add("hidden");
+        document.getElementById("dashboard").classList.remove("hidden");
+
+        document.getElementById("welcome").textContent =
+            "Добро пожаловать, " + user.username;
+
+        document.getElementById("userRole").textContent =
+            "Ваша роль: " + user.role;
+
+        if (user.role === "admin") {
+            document.getElementById("adminPanel").classList.remove("hidden");
+            document.getElementById("userPanel").classList.add("hidden");
+
+            await loadUsers();
+            await loadEvents();
+        } else {
+            document.getElementById("adminPanel").classList.add("hidden");
+            document.getElementById("userPanel").classList.remove("hidden");
+        }
+
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+// Загрузка пользователей
+async function loadUsers() {
+    const users = await api("/api/users");
+    const container = document.getElementById("users");
+
+    container.replaceChildren();
+
+    users.forEach(user => {
+        const item = document.createElement("div");
+        item.className = "item";
+
+        const info = document.createElement("p");
+        info.textContent = `${user.username} | ${user.role}`;
+
+        const select = document.createElement("select");
+
+        ["admin", "student", "teacher"].forEach(role => {
+            const option = document.createElement("option");
+            option.value = role;
+            option.textContent = role;
+            option.selected = role === user.role;
+            select.appendChild(option);
+        });
+
+        const button = document.createElement("button");
+        button.textContent = "Изменить роль";
+
+        button.onclick = async () => {
+            try {
+                await api(`/api/users/${user.id}/role`, {
+                    method: "PATCH",
+                    body: JSON.stringify({ role: select.value })
+                });
+
+                alert("Роль изменена");
+                await loadUsers();
+                await loadEvents();
+
+            } catch (error) {
+                alert(error.message);
+            }
+        };
+
+        item.append(info, select, button);
+        container.appendChild(item);
+    });
+}
+
+// Загрузка журнала событий
+async function loadEvents() {
+    const events = await api("/api/events");
+    const container = document.getElementById("events");
+
+    container.replaceChildren();
+
+    events.slice().reverse().forEach(event => {
+        const item = document.createElement("div");
+        item.className = "item";
+
+        item.textContent =
+            `${event.date} | ${event.username} | ${event.action} | ${event.details}`;
+
+        container.appendChild(item);
+    });
+}
+
+// Выход
+async function logout() {
+    try {
+        await api("/api/logout", {
+            method: "POST"
+        });
+
+        document.getElementById("dashboard").classList.add("hidden");
+        document.getElementById("loginForm").classList.remove("hidden");
+
+        document.getElementById("username").value = "";
+        document.getElementById("password").value = "";
+        document.getElementById("message").textContent = "";
+
+    } catch (error) {
+        alert(error.message);
+    }
+}
