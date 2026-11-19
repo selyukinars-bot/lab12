@@ -1,0 +1,295 @@
+Bash
+npm init -y
+npm install express express-session
+
+const express = require("express");
+const session = require("express-session");
+
+const app = express();
+
+app.use(express.json());
+
+app.use(session({
+    secret: "library-secret-key",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        httpOnly: true,
+        maxAge: 30 * 60 * 1000
+    }
+}));
+
+app.use(express.static("public"));
+
+// Учебная база пользователей
+const users = [
+    {
+        id: 1,
+        username: "student",
+        password: "12345",
+        role: "student"
+    },
+    {
+        id: 2,
+        username: "teacher",
+        password: "12345",
+        role: "teacher"
+    }
+];
+
+// Проверка входа
+app.post("/api/login", (req, res) => {
+    const { username, password } = req.body;
+
+    const user = users.find(
+        u => u.username === username &&
+             u.password === password
+    );
+
+    if (!user) {
+        return res.status(401).json({
+            message: "Неверный логин или пароль"
+        });
+    }
+
+    req.session.user = {
+        id: user.id,
+        username: user.username,
+        role: user.role
+    };
+
+    res.json({
+        message: "Вход выполнен",
+        username: user.username,
+        role: user.role
+    });
+});
+
+// Проверка авторизации
+function checkAuth(req, res, next) {
+    if (!req.session.user) {
+        return res.status(401).json({
+            message: "Необходимо войти в систему"
+        });
+    }
+
+    next();
+}
+
+// Проверка роли
+function checkRole(role) {
+    return (req, res, next) => {
+        if (!req.session.user || req.session.user.role !== role) {
+            return res.status(403).json({
+                message: "Доступ запрещен"
+            });
+        }
+
+        next();
+    };
+}
+
+// Получение профиля
+app.get("/api/me", checkAuth, (req, res) => {
+    res.json(req.session.user);
+});
+
+// Страница студента
+app.get("/api/student", checkAuth, checkRole("student"), (req, res) => {
+    res.json({
+        message: "Добро пожаловать, студент!",
+        functions: [
+            "Просмотр учебных материалов",
+            "Поиск книг",
+            "Просмотр заданий"
+        ]
+    });
+});
+
+// Страница преподавателя
+app.get("/api/teacher", checkAuth, checkRole("teacher"), (req, res) => {
+    res.json({
+        message: "Добро пожаловать, преподаватель!",
+        functions: [
+            "Добавление учебных материалов",
+            "Управление книгами",
+            "Просмотр списка студентов"
+        ]
+    });
+});
+
+// Выход
+app.post("/api/logout", (req, res) => {
+    req.session.destroy(() => {
+        res.json({ message: "Вы вышли из системы" });
+    });
+});
+
+app.listen(3000, () => {
+    console.log("Сервер запущен: http://localhost:3000");
+});
+-----------------------------
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Электронная библиотека</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container" id="loginForm">
+        <h1>Электронная библиотека</h1>
+        <h2>Авторизация</h2>
+
+        <input type="text" id="username" placeholder="Логин">
+        <input type="password" id="password" placeholder="Пароль">
+
+        <button onclick="login()">Войти</button>
+
+        <p id="message"></p>
+
+        <div class="examples">
+            <p>Студент: student / 12345</p>
+            <p>Преподаватель: teacher / 12345</p>
+        </div>
+    </div>
+
+    <div class="container hidden" id="profile">
+        <h1>Электронная библиотека</h1>
+
+        <h2 id="welcome"></h2>
+        <p id="role"></p>
+
+        <div id="content"></div>
+
+        <button onclick="logout()">Выйти</button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+--------------------------------------------
+body {
+    font-family: Arial, sans-serif;
+    background: #e8eef5;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+}
+
+.container {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    width: 350px;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+}
+
+input {
+    width: 90%;
+    padding: 12px;
+    margin: 10px 0;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+
+button {
+    width: 100%;
+    padding: 12px;
+    background: #2878d0;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-top: 10px;
+}
+
+button:hover {
+    background: #185ca5;
+}
+
+.hidden {
+    display: none;
+}
+
+#message {
+    color: red;
+}
+
+.examples {
+    font-size: 13px;
+    color: gray;
+}
+
+#content {
+    text-align: left;
+    margin: 20px 0;
+}
+---------------------------------------------
+async function login() {
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+
+    const response = await fetch("/api/login", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ username, password })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        document.getElementById("message").textContent = data.message;
+        return;
+    }
+
+    showProfile();
+}
+
+async function showProfile() {
+    const response = await fetch("/api/me");
+    const user = await response.json();
+
+    document.getElementById("loginForm").classList.add("hidden");
+    document.getElementById("profile").classList.remove("hidden");
+
+    document.getElementById("welcome").textContent =
+        "Добро пожаловать, " + user.username;
+
+    document.getElementById("role").textContent =
+        "Ваша роль: " + user.role;
+
+    // Запрос разрешенной сервером страницы
+    const page = user.role === "student"
+        ? "/api/student"
+        : "/api/teacher";
+
+    const pageResponse = await fetch(page);
+    const pageData = await pageResponse.json();
+
+    document.getElementById("content").innerHTML =
+        "<h3>" + pageData.message + "</h3>" +
+        "<ul>" +
+        pageData.functions.map(item => "<li>" + item + "</li>").join("") +
+        "</ul>";
+}
+
+async function logout() {
+    await fetch("/api/logout", {
+        method: "POST"
+    });
+
+    document.getElementById("profile").classList.add("hidden");
+    document.getElementById("loginForm").classList.remove("hidden");
+
+    document.getElementById("username").value = "";
+    document.getElementById("password").value = "";
+    document.getElementById("message").textContent = "";
+}
